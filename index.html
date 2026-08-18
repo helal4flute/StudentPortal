@@ -329,24 +329,39 @@
 // Instructions: ask Claude for the "Apps Script setup steps" if you need them again.
 const API_URL = "https://script.google.com/macros/s/AKfycbw978oqqbhDR2VM7yge1bhNg0YRJiUk4TPichhqzTZSkpM1DbGT6YKMH2Ixr4mKSjZfsw/exec";
 
+// JSONP request helper — used instead of fetch() because Google Apps Script
+// web apps are inconsistent about sending CORS headers across browsers,
+// which blocks plain fetch requests from other domains. Loading the response
+// as a <script> tag sidesteps CORS entirely and works everywhere.
+let jsonpCounter = 0;
+function jsonpRequest(params){
+  return new Promise((resolve, reject)=>{
+    const callbackName = 'jsonp_cb_' + (jsonpCounter++) + '_' + Date.now();
+    const query = new URLSearchParams({ ...params, callback: callbackName }).toString();
+    const script = document.createElement('script');
+    script.src = `${API_URL}?${query}`;
+
+    function cleanup(){
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      script.remove();
+    }
+    window[callbackName] = (data)=>{ resolve(data); cleanup(); };
+    script.onerror = ()=>{ reject(new Error('Request failed')); cleanup(); };
+    const timeoutId = setTimeout(()=>{ reject(new Error('Request timed out')); cleanup(); }, 12000);
+
+    document.body.appendChild(script);
+  });
+}
+
 async function apiListByDate(date){
-  const res = await fetch(`${API_URL}?action=listByDate&date=${encodeURIComponent(date)}`);
-  if(!res.ok) throw new Error('API error');
-  return await res.json(); // array of booking objects
+  return await jsonpRequest({ action:'listByDate', date }); // array of booking objects
 }
 async function apiListAll(){
-  const res = await fetch(`${API_URL}?action=list`);
-  if(!res.ok) throw new Error('API error');
-  return await res.json();
+  return await jsonpRequest({ action:'list' });
 }
 async function apiCreateBooking(record){
-  // Sent as GET (not POST) — Google Apps Script web apps redirect POST
-  // requests in a way that browsers convert to GET, dropping the body.
-  // GET avoids that entirely.
-  const params = new URLSearchParams({ action: 'create', ...record });
-  const res = await fetch(`${API_URL}?${params.toString()}`);
-  if(!res.ok) throw new Error('API error');
-  return await res.json(); // {success:true} or {success:false, error:'taken'}
+  return await jsonpRequest({ action:'create', ...record }); // {success:true} or {success:false, error:'taken'}
 }
 
 const SERVICES = [
