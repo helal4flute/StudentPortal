@@ -340,12 +340,11 @@ async function apiListAll(){
   return await res.json();
 }
 async function apiCreateBooking(record){
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    // text/plain avoids a CORS preflight, which Apps Script web apps don't support
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'create', ...record })
-  });
+  // Sent as GET (not POST) — Google Apps Script web apps redirect POST
+  // requests in a way that browsers convert to GET, dropping the body.
+  // GET avoids that entirely.
+  const params = new URLSearchParams({ action: 'create', ...record });
+  const res = await fetch(`${API_URL}?${params.toString()}`);
   if(!res.ok) throw new Error('API error');
   return await res.json(); // {success:true} or {success:false, error:'taken'}
 }
